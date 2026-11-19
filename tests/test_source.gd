@@ -27,12 +27,12 @@ func test_ac22_core_is_pure() -> bool:
 
 
 func test_ac23_no_japanese_literals_outside_strings() -> bool:
-	# 日本語の文言は core/strings.gd だけ(bots.gd の bot の名前は道具の印字用)
+	# 日本語の文言は core/strings.gd だけ
 	var re := RegEx.create_from_string("\"[^\"\\n]*[\\x{3000}-\\x{9FFF}\\x{FF00}-\\x{FFEF}][^\"\\n]*\"")
 	var found: Array = []
 	for dir: String in ["res://core", "res://ui", "res://audio", "res://save"]:
 		for f: String in _files(dir):
-			if f.ends_with("strings.gd") or f.ends_with("bots.gd"):
+			if f.ends_with("strings.gd"):
 				continue
 			for m in re.search_all(_code(f)):
 				found.append("%s: %s" % [f, m.get_string()])

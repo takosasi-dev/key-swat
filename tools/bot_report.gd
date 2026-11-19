@@ -6,6 +6,7 @@ const Sim := preload("res://core/sim.gd")
 const Bots := preload("res://core/bots.gd")
 const Score := preload("res://core/score.gd")
 const B := preload("res://core/balance.gd")
+const NAMES := ["正しい", "連打", "何もしない"]
 
 
 func _initialize() -> void:
@@ -20,7 +21,7 @@ func _initialize() -> void:
 			var r: Dictionary = Bots.play(Sim.new(s, Sim.MODE_PRACTICE), k, cap)
 			ticks.append(int(r["ticks"]))
 			var why: String = "上限" if r["capped"] else ["感染", "耐久"][int(r["reason"])]
-			row += "  %s %6d tick(%s) 点 %7d 潰 %4d 外 %3d %s" % [Bots.NAMES[k], r["ticks"], Score.clock_text(r["ticks"]), r["score"], r["squashed"], r["misses"], why]
+			row += "  %s %6d tick(%s) 点 %7d 潰 %4d 外 %3d %s" % [NAMES[k], r["ticks"], Score.clock_text(r["ticks"]), r["score"], r["squashed"], r["misses"], why]
 		if ticks[1] >= ticks[0]:
 			r3 += 1
 		print(row)

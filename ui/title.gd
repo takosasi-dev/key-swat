@@ -17,6 +17,7 @@ func build(store: RefCounted, day: int, date: String) -> void:
 	size = Vector2(1280, 720)
 	var faint := Board.new()
 	faint.snap = Board.title_snap()
+	faint.show_locked = false
 	faint.modulate.a = 0.35
 	faint.scale = Vector2(0.45, 0.45)
 	Kit.place(faint, 341, 400, 1280, 720)
@@ -33,11 +34,11 @@ func build(store: RefCounted, day: int, date: String) -> void:
 		var what := String(b.name)
 		b.pressed.connect(func() -> void: chosen.emit(what))
 	var d: Dictionary = store.daily(day)
-	var rec := S.REC_NONE
-	if d["first"] != null:
-		rec = (S.REC_FIRST % Score.comma(d["first"]["score"])) + " / " + (S.REC_TODAY_BEST % Score.comma(d["best"]["score"]))
-	_note(rec, daily)
 	var pb: Variant = store.practice_best()
+	if d["first"] != null:
+		_note((S.REC_FIRST % Score.comma(d["first"]["score"])) + " / " + (S.REC_TODAY_BEST % Score.comma(d["best"]["score"])), daily)
+	elif pb != null or store.data["daily"] != null:
+		_note(S.REC_NONE, daily)  # 初めての起動(記録が何も無い)では記録の行を出さない
 	if pb != null:
 		_note(S.REC_BEST % Score.comma(pb["score"]), practice)
 	var ver := Kit.label(S.VERSION, 20, Kit.C_DIM)

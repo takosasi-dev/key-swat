@@ -10,7 +10,6 @@ const Layout := preload("res://core/layout.gd")
 const GOOD := 0
 const MASH := 1
 const IDLE := 2
-const NAMES := ["正しい", "連打", "何もしない"]
 
 
 class Driver:

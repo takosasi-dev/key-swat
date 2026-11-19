@@ -134,6 +134,8 @@ func _process(delta: float) -> void:
 func _on_event(e: Dictionary, heard: Dictionary) -> void:
 	var now := Time.get_ticks_msec()
 	var t: String = e["type"]
+	if bot != null and (t == "unlock" or (t == "spawn" and int(e["kind"]) == Sim.JUMPER)):
+		print("SMOKE event=%s clock=%d" % [t, sim.clock])  # smoke で 80 秒・120 秒の先まで描いたかを見る
 	match t:
 		"squash":
 			var i: int = e["key"]

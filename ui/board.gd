@@ -11,6 +11,7 @@ const Kit := preload("res://ui/kit.gd")
 
 var snap: Dictionary = {}
 var reduce_flash := false
+var show_locked := true  # 解放前の数字の段を枠で出すか(タイトルの薄い盤は出さない)
 var miss_at: Array[int] = []
 var hit_at: Array[int] = []
 var spawn_at: Array[int] = []
@@ -72,6 +73,8 @@ func _draw() -> void:
 			if t >= 0.0 and t < 1.0:
 				r.position.y -= (1.0 - t) * B.KEY_PX  # 上から入る
 		if not active[i]:
+			if not show_locked:
+				continue
 			_sb["locked"].draw(get_canvas_item(), r)
 			_label(i, r, Color(Kit.C_KEY_TEXT, 0.3), 30, true)
 			continue
