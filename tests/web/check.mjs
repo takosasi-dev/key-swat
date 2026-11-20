@@ -305,7 +305,7 @@ try {
 	expect(errs.length === 0, `コンソールのエラー ${errs.length} 件` + (errs.length ? ': ' + errs.map((e) => e.text).slice(0, 5).join(' / ') : ''));
 	if (process.argv.includes('--docs')) {
 		mkdirSync(path.join(ROOT, 'docs'), { recursive: true });
-		for (const f of ['s1_title_record', 's2_climax', 's3_result_newbest']) copyFileSync(path.join(OUT, f + '.png'), path.join(ROOT, 'docs', f + '.png'));
+		for (const f of ['s1_title_record', 's2_climax', 's3_result']) copyFileSync(path.join(OUT, f + '.png'), path.join(ROOT, 'docs', f + '.png'));
 	}
 } finally {
 	await page.close();
