@@ -15,9 +15,12 @@ func build() -> void:
 	var dim := ColorRect.new()
 	dim.color = Color(0, 0, 0, 0.7)
 	add_child(Kit.place(dim, 0, 0, 1280, 720))
-	add_child(Kit.place(Kit.label(S.PAUSE, 40, Kit.C_TEXT, 700), 0, 110, 1280, 60))
+	var panel := Panel.new()  # 題とボタンの下に板を敷き、後ろの棒や盤と重ねない
+	panel.add_theme_stylebox_override("panel", Kit.box(Kit.C_PANEL, Kit.C_EDGE, 2, 12))
+	add_child(Kit.place(panel, 440, 96, 400, 448))
+	add_child(Kit.place(Kit.label(S.PAUSE, 40, Kit.C_TEXT, 700), 0, 116, 1280, 60))
 	var list: Array[Button] = []
-	var y := 210.0
+	var y := 200.0
 	for pair: Array in [["resume", S.B_RESUME], ["restart", S.B_RESTART], ["settings", S.B_SETTINGS], ["title", S.B_TITLE]]:
 		var b := Kit.place(Kit.button(pair[0], pair[1], 26), 490, y, 300, 68)
 		var what: String = pair[0]

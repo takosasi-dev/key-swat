@@ -254,3 +254,138 @@ func test_ime_note_on_zero_keycode() -> bool:
 	ok(m.play._ime.visible, "physical_keycode が 0 のキーで日本語入力の案内(共通 §3 の 9)")
 	_done(m)
 	return true
+
+
+# --- 磨き(v0.2.0)で足した演出と見た目 ---
+
+func _playing(m: Node) -> void:
+	kp(m, KEY_X)
+	kp(m, KEY_ENTER)
+
+
+func test_polish_saved_ring_only_when_source_squashed() -> bool:
+	var m := _main()
+	_playing(m)
+	m.play.sim = empty_board()
+	m.play.sim.put(idx("D"), Sim.BUG, true)
+	for k in 200:
+		if m.play.sim.target[idx("D")] >= 0:
+			break
+		frames(m, 1, 8.0 / B.TICK_HZ)
+	ok(m.play.sim.target[idx("D")] >= 0, "D の予兆が出る")
+	eq(m.play._tip.text, S.TIP_WARN, "初めての予兆で 1 行の案内")
+	ok(m.play._tip_until > Time.get_ticks_msec(), "案内が出ている")
+	kp(m, KEY_D)
+	frames(m, 1)
+	eq(m.play.fx.saves.size(), 1, "予兆の間に元を潰すと、止めた先に緑の輪")
+	eq(m.play.fx.pops.size(), 1, "潰したキーの縁が弾ける")
+	m.play.sim.put(idx("G"), Sim.BUG, true)
+	m.play.sim.target[idx("G")] = idx("H")
+	m.play.sim._events = []  # 直前の step の出来事はもう演出した
+	m.play.sim.put(idx("G"), Sim.NEST, true)  # 教える順の置き直し(E-20)でも warn_cancel が出る
+	for e: Dictionary in m.play.sim.events():
+		m.play._on_event(e, {})
+	eq(m.play.fx.saves.size(), 1, "置き直しで消えた予兆には輪を出さない")
+	eq(m.play._tip.text, S.TIP_NEST, "巣が初めて出た時の案内")
+	m.play._tip_until = 0
+	m.play._on_event({"type": "warn", "from": idx("G"), "to": idx("H")}, {})
+	eq(m.play._tip_until, 0, "同じ案内は 1 回の中で 1 度だけ")
+	_done(m)
+	return true
+
+
+func test_polish_unlock_note_and_slide_clear_the_bars() -> bool:
+	var m := _main()
+	_playing(m)
+	m.play._on_event({"type": "unlock"}, {})
+	eq(m.play._tip.text, S.UNLOCK, "数字の段の知らせは盤の下の 1 行")
+	ok(m.play._tip.position.y > Layout.key_rect(39).end.y, "盤より下に出る")
+	ok(Layout.key_rect(0).position.y - B.UNLOCK_SLIDE_PX > 116 + 30 + 6, "上から入る数字の段が、上の棒(y 116〜146 と縦線 6 px)に重ならない")
+	_done(m)
+	return true
+
+
+func test_polish_float_text_fits_and_stays_on_screen() -> bool:
+	const Fx := preload("res://ui/fx.gd")
+	const Kit := preload("res://ui/kit.gd")
+	var widest := S.FLOAT % ["1,200", "x4.0"]
+	var w := Kit.font(800).get_string_size(widest, HORIZONTAL_ALIGNMENT_LEFT, -1, int(28 * B.BIG_SCALE)).x
+	ok(w + B.FLOAT_OUTLINE * 2 <= B.FLOAT_W, "巣の大きい数字が枠に収まる(%d px)" % int(w))
+	var fx := Fx.new()
+	fx.now_ms = 1000
+	fx.float_text(Layout.key_rect(idx("/")).get_center(), widest, true)
+	fx.float_text(Layout.key_rect(idx("1")).get_center() - Vector2(200, 0), widest, true)
+	ok(fx.floats[0][1].x + B.FLOAT_W / 2.0 <= 1280.0, "右端の / でも画面の外へ出ない")
+	ok(fx.floats[1][1].x - B.FLOAT_W / 2.0 >= 0.0, "左へも出ない")
+	fx.free()
+	return true
+
+
+func test_polish_danger_edge_and_over_veil_follow_reduce_flash() -> bool:
+	const Play := preload("res://ui/play.gd")
+	eq(Play.edge_alpha(9, 30, 0, false), 0.0, "感染 30% 以下は縁を出さない")
+	eq(Play.edge_alpha(12, 40, 0, false), 0.0, "40 キーなら 12 まで出さない")
+	var a0 := Play.edge_alpha(10, 30, 0, false)
+	var a1 := Play.edge_alpha(10, 30, B.DANGER_PULSE_MS, false)
+	ok(a0 >= B.DANGER_ALPHA_LO and a0 <= B.DANGER_ALPHA_HI and a0 != a1, "30% を超えたら縁が脈打つ")
+	ok(Play.edge_alpha(Play.lose_at(30) - 2, 30, 0, false) > 0.0 and Play.edge_alpha(Play.lose_at(40) - 3, 40, 0, false) > 0.0, "負けの線の 2〜3 匹手前から出る")
+	for now in [0, 100, 200, 300, 400]:
+		ok(Play.edge_alpha(15, 40, now, true) <= B.REDUCED_FLASH_ALPHA, "点滅を弱めると縁は 20% 以下")
+	eq(Play.veil_alpha(0, false), 0.0, "終わった瞬間は幕なし")
+	ok(is_equal_approx(Play.veil_alpha(B.OVER_MS, false), B.OVER_VEIL_ALPHA), "400 ms で幕が一番濃い")
+	ok(Play.veil_alpha(B.OVER_MS * 2, true) <= B.REDUCED_FLASH_ALPHA, "点滅を弱めると幕は 20% 以下")
+	var m := _main()
+	_playing(m)
+	m.play.sim.queue_press(idx("F"))
+	frames(m, 1)
+	m.play.sim.over = true
+	m.play._on_event({"type": "over", "reason": 0}, {})
+	frames(m, 1)
+	eq(m.play.fx.edge_alpha, 0.0, "終わったら縁は消して幕だけ")
+	_done(m)
+	return true
+
+
+func test_load_scene_for_nfr1() -> bool:
+	var m := _main()
+	kp(m, KEY_X)
+	m._load_test()
+	for k in 60:
+		frames(m, 1)
+	eq(m.screen, "play", "負荷の場面は終わらない")
+	ok(not m.play.sim.over, "15 匹は 40 キーの 40% に届かない")
+	eq(m.play.sim.infected(), 15, "虫 15 匹")
+	eq(m.play.sim.layout.active_count(), 40, "40 キー")
+	eq(m.play.fx.shards.size(), B.SHARDS_MAX, "破片が上限(240)")
+	eq(m.play.fx.floats.size(), B.FLOATS_MAX, "浮かぶ数字が上限(20)")
+	_done(m)
+	return true
+
+
+func test_polish_lose_at_matches_core_line() -> bool:
+	const Play := preload("res://ui/play.gd")
+	eq(Play.lose_at(30), 12, "30 キーは 12 で終わり")
+	eq(Play.lose_at(40), 16, "40 キーは 16 で終わり")
+	for act in [30, 40]:
+		var n := Play.lose_at(act)
+		ok(n * 100 >= act * B.LOSE_PERCENT and (n - 1) * 100 < act * B.LOSE_PERCENT, "core の負けの線と同じ(%d)" % act)
+	return true
+
+
+func test_polish_buttons_are_opaque_and_title_keeps_settings() -> bool:
+	const Kit := preload("res://ui/kit.gd")
+	var b := Kit.button("x", "x")
+	for on in [false, true]:
+		Kit.set_selected(b, on)
+		eq((b.get_theme_stylebox("normal") as StyleBoxFlat).bg_color.a, 1.0, "ボタンの中は不透明(一時停止で盤が透けない)")
+	b.free()
+	var m := _main()
+	kp(m, KEY_X)
+	kp(m, KEY_DOWN)
+	kp(m, KEY_DOWN)
+	kp(m, KEY_ENTER)
+	eq(m.screen, "settings", "設定")
+	kp(m, KEY_ESCAPE)
+	eq(m.current.menu.sel, 2, "設定から戻ると設定のボタンが選ばれたまま")
+	_done(m)
+	return true

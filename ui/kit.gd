@@ -64,19 +64,20 @@ static func button(node_name: String, text: String, size: int = 28) -> Button:
 	b.add_theme_font_override("font", font(700))
 	b.add_theme_font_size_override("font_size", size)
 	set_selected(b, false)
-	b.add_theme_stylebox_override("pressed", box(Color(C_SEL, 0.3), C_SEL, 3))
-	b.add_theme_stylebox_override("disabled", box(Color(1, 1, 1, 0.02), Color(C_DIM, 0.3), 2))
+	b.add_theme_stylebox_override("pressed", box(C_BG.lerp(C_SEL, 0.3), C_SEL, 3))
+	b.add_theme_stylebox_override("disabled", box(C_BG.lerp(C_WHITE, 0.02), Color(C_DIM, 0.3), 2))
 	for c: String in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
 		b.add_theme_color_override(c, C_TEXT)
 	b.add_theme_color_override("font_disabled_color", Color(C_DIM, 0.5))
 	return b
 
 
+# 中は不透明にする(一時停止の時に後ろの盤の字が透けないように)。
 static func set_selected(b: Button, on: bool) -> void:
 	var edge := C_SEL if on else Color(C_TEXT, 0.55)
-	var fill := Color(C_SEL, 0.16) if on else Color(1, 1, 1, 0.04)
+	var fill := C_BG.lerp(C_SEL, 0.16) if on else C_BG.lerp(C_WHITE, 0.04)
 	b.add_theme_stylebox_override("normal", box(fill, edge, 3 if on else 2))
-	b.add_theme_stylebox_override("hover", box(Color(C_SEL, 0.12), C_SEL, 3))
+	b.add_theme_stylebox_override("hover", box(C_BG.lerp(C_SEL, 0.12), C_SEL, 3))
 
 
 static func place(c: Control, x: float, y: float, w: float, h: float) -> Control:

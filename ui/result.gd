@@ -26,9 +26,9 @@ func build(result: Dictionary, rec: Dictionary, share_text: String) -> void:
 	share = share_text
 	_points = int(result["score"])
 	_shown_at = Time.get_ticks_msec()
-	add_child(Kit.place(Kit.label(S.REASONS[maxi(int(result["reason"]), 0)], 32, Kit.C_DIM, 700), 0, 24, 1280, 48))
+	add_child(Kit.place(Kit.label(S.REASONS[maxi(int(result["reason"]), 0)], 32, Kit.C_WARN, 700), 0, 24, 1280, 48))  # 何で終わったかを最初に読ませる
 	_points_label = Kit.label(S.RES_POINTS % "0", 96, Kit.C_TEXT, 800)
-	add_child(Kit.place(_points_label, 0, 72, 1280, 120))
+	add_child(Kit.place(_points_label, 0, 62, 1280, 120))  # 下の「最高 +…」の行と字が触れない高さ
 	if rec["prev_best"] != null:
 		var diff := _points - int(rec["prev_best"]["score"])
 		var text: String = S.RES_NEW_BEST % Score.comma(diff) if rec["new_best"] else S.RES_TO_BEST % Score.comma(-diff)

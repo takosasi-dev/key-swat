@@ -12,8 +12,8 @@ const Board := preload("res://ui/board.gd")
 var menu: Menu
 
 
-# store は save_store、day は通し日数、date は "2026-11-19"。
-func build(store: RefCounted, day: int, date: String) -> void:
+# store は save_store、day は通し日数、date は "2026-11-19"。sel は選んでおくボタン(0 今日の盤・1 練習・2 設定)。
+func build(store: RefCounted, day: int, date: String, sel: int = 0) -> void:
 	size = Vector2(1280, 720)
 	var faint := Board.new()
 	faint.snap = Board.title_snap()
@@ -44,7 +44,7 @@ func build(store: RefCounted, day: int, date: String) -> void:
 	var ver := Kit.label(S.VERSION, 20, Kit.C_DIM)
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	add_child(Kit.place(ver, 24, 676, 200, 32))
-	menu = Menu.new([daily, practice, settings] as Array[Button], 0)
+	menu = Menu.new([daily, practice, settings] as Array[Button], sel)
 
 
 func _note(text: String, by: Button) -> void:

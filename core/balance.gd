@@ -90,3 +90,19 @@ const REDUCED_FLASH_ALPHA := 0.2
 const PITCH_STEPS_MAX := 12  # 潰す音を半音ずつ上げる上限
 const INTEGRITY_LOW := 30  # 耐久の棒を赤くする線
 const INFECT_WARN_PCT := 35  # 感染の棒を橙にする線
+
+# 磨き(v0.2.0)で足した演出。仕様書 §14・画面設計書 §8 に記録した
+const UNLOCK_SLIDE_PX := 56  # 数字の段が上から入る幅(上の棒に重ならない)
+const WARN_FILL_ALPHA := 0.16  # 予兆の先のキーの中の橙(脈に合わせて濃くなる)
+const FLOAT_W := 360  # 浮かぶ数字の枠の幅(巣の「+1,200 x4.0」が 1.6 倍でも収まる)
+const FLOAT_OUTLINE := 8  # 浮かぶ数字の縁取り
+const POP_MS := 200  # 潰したキーの縁が弾ける
+const POP_GROW_PX := 16
+const SAVED_MS := 300  # 広がりを止めた先の緑の輪
+const DANGER_EDGE_PCT := 30  # 感染がこれを超えたら画面の縁を赤くする(30 キーで 10、40 キーで 13。広がりが重なると数匹まとめて増えるので、負けの線より早めに)
+const DANGER_EDGE_PX := 12
+const DANGER_ALPHA_LO := 0.25
+const DANGER_ALPHA_HI := 0.6
+const DANGER_PULSE_MS := 400
+const OVER_VEIL_ALPHA := 0.35  # 終わった瞬間の赤い幕(点滅を弱めると REDUCED_FLASH_ALPHA)
+const TIP_MS := 3000  # 新しい物が初めて出た時の 1 行の案内

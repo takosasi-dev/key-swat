@@ -24,17 +24,21 @@ var paused := false
 var shake_on := true
 var reduce_flash := false
 var bot: Bots.Driver = null  # 自動の確かめ(smoke)だけで使う
+var load_test := false  # NFR-1 の負荷の場面(main の ?debug=1&load=1)。破片と浮かぶ数字を上限まで出し続ける
 var board: Board
 var fx: Fx
+var key_at := 0  # 最後に盤のキーを押した時刻(usec)
+var stepped_key_at := 0  # その押下を step に渡した時の key_at
 var _acc := 0.0
 var _over_at := -1
 var _shake_until := 0
 var _shake_px := 0.0
-var _unlock_until := 0
 var _ime_until := 0
 var _bar: Dictionary = {}
 var _hint: Label
-var _note: Label
+var _tip: Label  # 盤の下の 1 行(数字の段が加わった・新しい物が初めて出た時の案内)
+var _tip_until := 0
+var _tips_seen := {}
 var _ime: Label
 var _snap: Dictionary = {}
 
@@ -61,8 +65,8 @@ func _ready() -> void:
 	add_child(fx)
 	_hint = Kit.label(S.HINT, 28, Kit.C_TEXT, 700)
 	add_child(Kit.place(_hint, 0, 612, 1280, 48))
-	_note = Kit.label(S.UNLOCK, 30, Kit.C_TEXT, 800)
-	add_child(Kit.place(_note, 0, 160, 1280, 48))
+	_tip = Kit.label("", 28, Kit.C_WARN, 700)
+	add_child(Kit.place(_tip, 0, 612, 1280, 48))
 	_ime = Kit.label(S.IME, 24, Kit.C_WARN, 700)
 	add_child(Kit.place(_ime, 0, 660, 1280, 40))
 
@@ -94,6 +98,7 @@ func key(ev: InputEventKey) -> void:
 	var i := Keymap.index_of(ev)
 	if i >= 0:
 		sim.queue_press(i)
+		key_at = Time.get_ticks_usec()
 
 
 func _process(delta: float) -> void:
@@ -103,8 +108,17 @@ func _process(delta: float) -> void:
 	position = Vector2.ZERO
 	if shake_on and now < _shake_until:
 		position = Vector2(randf_range(-_shake_px, _shake_px), randf_range(-_shake_px, _shake_px))
-	_note.visible = now < _unlock_until
+	_tip.visible = now < _tip_until
 	_ime.visible = now < _ime_until
+	if not _snap.is_empty():
+		fx.edge_alpha = 0.0 if _over_at != -1 else edge_alpha(int(_snap["infected"]), int(_snap["active_count"]), now, reduce_flash)
+	if _over_at >= 0:
+		fx.veil_alpha = veil_alpha(now - _over_at, reduce_flash)
+	if load_test:
+		for k in 3:
+			var i := (Engine.get_process_frames() * 3 + k) % 15 + 10
+			fx.burst(board.center(i), Kit.C_BUG)
+			fx.float_text(board.center(i), S.FLOAT % ["1,200", "x4.0"], k == 0)
 	fx.tick()
 	board.queue_redraw()
 	if _over_at >= 0:
@@ -121,6 +135,8 @@ func _process(delta: float) -> void:
 		n = B.MAX_STEPS_PER_FRAME  # E-9: 超えた分は捨てる
 		_acc = 0.0
 	var heard := {}
+	if n > 0 and key_at > stepped_key_at:
+		stepped_key_at = key_at  # この後の step で押下が sim に入る(main が描き終わりまでの時間を測る)
 	for k in n:
 		if bot != null:
 			bot.feed(sim)
@@ -141,6 +157,7 @@ func _on_event(e: Dictionary, heard: Dictionary) -> void:
 			var i: int = e["key"]
 			var big: bool = int(e["kind"]) == Sim.NEST or int(e["chain"]) % B.BIG_CHAIN_EVERY == 0
 			fx.burst(board.center(i), [Kit.C_BUG, Kit.C_BUG, Kit.C_NEST, Kit.C_JUMPER][int(e["kind"])])
+			fx.pop(Layout.key_rect(i))
 			fx.float_text(board.center(i) - Vector2(0, 30), S.FLOAT % [Score.comma(int(e["points"])), Score.mult_text(int(e["mult10"]))], big)
 			if big:
 				_shake(B.SHAKE_BIG_PX, B.SHAKE_BIG_MS)
@@ -153,16 +170,51 @@ func _on_event(e: Dictionary, heard: Dictionary) -> void:
 			_shake(B.SHAKE_MISS_PX, B.SHAKE_MISS_MS)
 		"spread":
 			fx.ripple(board.center(int(e["to"])))
+		"warn":
+			_tip_once("warn", S.TIP_WARN)
+		"warn_cancel":
+			if sim.state[int(e["from"])] == Sim.CLEAN:  # 元を潰して止めた(巣・跳ぶ虫への置き直しで消えた時は出さない)
+				fx.saved(board.center(int(e["to"])))
 		"spawn":
 			board.spawn_at[int(e["key"])] = now
+			if int(e["kind"]) == Sim.NEST:
+				_tip_once("nest", S.TIP_NEST)
+			elif int(e["kind"]) == Sim.JUMPER:
+				_tip_once("jumper", S.TIP_JUMPER)
 		"unlock":
 			board.unlock_at = now
-			_unlock_until = now + B.UNLOCK_NOTE_MS
+			_show_tip(S.UNLOCK, B.UNLOCK_NOTE_MS)
 		"over":
 			_over_at = now
 	if t in ["nest_hit", "miss", "warn", "spread", "unlock", "over"] and not heard.has(t):
 		Sfx.play(t)
 	heard[t] = true
+
+
+func _show_tip(text: String, ms: int) -> void:
+	_tip.text = text
+	_tip_until = Time.get_ticks_msec() + ms
+
+
+# 新しい物(予兆・巣・跳ぶ虫)が、この回で初めて出た時だけ 1 行の案内を出す。
+func _tip_once(what: String, text: String) -> void:
+	if not _tips_seen.has(what):
+		_tips_seen[what] = true
+		_show_tip(text, B.TIP_MS)
+
+
+# 感染が DANGER_EDGE_PCT を超えたら画面の縁を赤く脈打たせる。点滅を弱めると脈打たず REDUCED_FLASH_ALPHA のまま。
+static func edge_alpha(infected: int, active: int, now: int, reduce: bool) -> float:
+	if infected * 100 <= active * B.DANGER_EDGE_PCT:
+		return 0.0
+	if reduce:
+		return B.REDUCED_FLASH_ALPHA
+	return lerpf(B.DANGER_ALPHA_LO, B.DANGER_ALPHA_HI, absf(fmod(float(now) / B.DANGER_PULSE_MS, 2.0) - 1.0))
+
+
+# 終わってから結果へ移るまでの OVER_MS で、赤い幕を濃くする。
+static func veil_alpha(since_ms: int, reduce: bool) -> float:
+	return (B.REDUCED_FLASH_ALPHA if reduce else B.OVER_VEIL_ALPHA) * clampf(float(since_ms) / B.OVER_MS, 0.0, 1.0)
 
 
 func _shake(px: float, ms: int) -> void:
@@ -210,4 +262,9 @@ func _draw() -> void:
 		Kit.C_WARN if over_warn else Kit.C_BUG)
 	var lx := bar.position.x + bar.size.x * B.LOSE_PERCENT / 100.0
 	draw_line(Vector2(lx, bar.position.y - 6), Vector2(lx, bar.end.y + 6), Kit.C_TEXT, 2.0)
-	draw_string(f, Vector2(960, 140), S.BAR_INFECT_COUNT % [inf, act, B.LOSE_PERCENT], HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Kit.C_TEXT)
+	draw_string(f, Vector2(960, 140), S.BAR_INFECT_COUNT % [inf, act, lose_at(act)], HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Kit.C_TEXT)
+
+
+# 何匹で終わるか(表示用。core の「感染数 × 100 ≥ active × LOSE_PERCENT」と同じ線。30 キーで 12、40 キーで 16)。
+static func lose_at(active: int) -> int:
+	return ceili(active * B.LOSE_PERCENT / 100.0)

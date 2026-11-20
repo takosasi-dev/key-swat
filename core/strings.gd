@@ -3,7 +3,7 @@
 extends RefCounted
 
 const NAME := "KeySwat"
-const VERSION := "v0.1.0"
+const VERSION := "v0.2.0"
 const URL := "https://takosasi-dev.github.io/key-swat/"
 
 # S0(共通 §6)
@@ -31,8 +31,12 @@ const BAR_POINTS := "%s点"
 const BAR_CHAIN := "つなぎ %d  %s"
 const BAR_INTEGRITY := "耐久"
 const BAR_INFECT := "感染"
-const BAR_INFECT_COUNT := "%d / %d(%d%% で終わり)"
+const BAR_INFECT_COUNT := "%d / %d(%d で終わり)"
 const UNLOCK := "数字の段が加わった"
+# 新しい物が初めて出た時の 1 行(磨きで足した。画面設計書 §6)
+const TIP_WARN := "橙の先へ広がる。赤い元を押せば止まる"
+const TIP_NEST := "巣は 3 回押すと潰れる"
+const TIP_JUMPER := "跳ぶ虫は 1 つ飛ばした先へ広がる"
 const FLOAT := "+%s %s"
 const MISS_MARK := "×"
 
