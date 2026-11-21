@@ -106,3 +106,18 @@ const DANGER_ALPHA_HI := 0.6
 const DANGER_PULSE_MS := 400
 const OVER_VEIL_ALPHA := 0.35  # 終わった瞬間の赤い幕(点滅を弱めると REDUCED_FLASH_ALPHA)
 const TIP_MS := 3000  # 新しい物が初めて出た時の 1 行の案内
+
+# UI の作り直し(v0.3.0)で足した見た目の動き。画面設計書 §10。点滅を弱める 入 では全部止める(動きを減らす設定を兼ねる)
+const ENTER_MS := 240  # 画面の入り(薄く→濃く、少し上がる)
+const ENTER_RISE_PX := 14
+const WIPE_MS := 300  # 検査光の線が上から下へ走り、新しい画面を出す
+const POP_IN_MS := 160  # 一時停止・設定の板が出る
+const LOGO_DROP_MS := 260  # 題字のキーが落ちて来る(1 つずつ LOGO_STAGGER_MS ずらす)
+const LOGO_STAGGER_MS := 45
+const LOGO_SWAT_MS := 240  # S のキーが叩かれた光
+const SCAN_PERIOD_MS := 9000  # タイトルの背景の走査線が上から下まで
+const BUMP_MS := 160  # 点が増えた時のはね
+const BUMP_SCALE := 0.12
+const COUNT_UP_RATE := 14.0  # 上の帯の点が本当の点へ追いつく速さ(1 秒あたりの割合)
+const STAMP_MS := 260  # 新しい記録の印が押される
+const DEMO_PRESS_TICKS := 54  # タイトルの薄い盤で、見本が虫を潰す間隔

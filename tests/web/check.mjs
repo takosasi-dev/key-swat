@@ -59,7 +59,7 @@ try {
 	expect(!!s0, `S0 が出る(ページを開いてから ${Date.now() - page.t0} ms。NFR-5 は 10 秒以内)`);
 	const loadedAt = Date.now();
 	await page.evaluate(`localStorage.setItem('parry-duel/save', '{"version":1,"keep":"me"}')`);
-	await sleep(300);
+	await sleep(1100); // 題字の入り(Logo.intro_ms() = 815 ms)が終わってから撮る
 	await shot('s0');
 	await page.touch(...(await page.gameCss(640, 360)));
 	await sleep(600);
@@ -67,7 +67,9 @@ try {
 	await shot('s0_touch');
 	await page.key('x');
 	expect(!!(await page.waitState((s) => s.screen === 'title')), 'キーで S1');
-	await sleep(300);
+	await sleep(120);
+	await shot('s1_title_entering'); // 切り替わりの途中(検査光の線と、落ちて来る題字)
+	await sleep(1000);
 	await shot('s1_title_first');
 	// 16:9 でない窓: 余りは背景色で、舞台は真ん中
 	await page.cdp.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 860, deviceScaleFactor: 1, mobile: false });
@@ -154,6 +156,7 @@ try {
 			await page.key('ArrowDown');
 			await page.key('Enter');
 			expect(!!(await page.waitState((st) => st.screen === 'settings', 3000)), '一時停止から設定');
+			await sleep(300); // 板が出る動き(160 ms)の後
 			await shot('s4_settings_from_pause');
 			await page.key('Escape');
 			expect(!!(await page.waitState((st) => st.screen === 'play' && st.paused, 3000)), '設定の戻るで一時停止へ');
@@ -208,17 +211,30 @@ try {
 	const c1 = await page.clipboard();
 	expect(c1.startsWith('KeySwat '), `コピーのボタン: ${JSON.stringify(c1).slice(0, 80)}`);
 	await shot('s3_copied');
+	// 共有する文字の枠を右クリックしても英語のメニューは出ない(v0.3.0。選んで Ctrl+C で写す)
+	{
+		const [x, y] = await page.gameCss(640, 498);
+		await page.cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'right', clickCount: 1 });
+		await page.cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'right', clickCount: 1 });
+		await sleep(400);
+		await shot('s3_right_click');
+		await page.key('Escape');
+		await sleep(200);
+		expect((await page.state()).screen === 'result', '右クリックのメニューを閉じても結果のまま');
+	}
 
-	// もう1回(R)→ 外し続けて耐久で終わる。最高との差は「最高まで −」
+	// もう1回(R)→ 外し続けて耐久で終わる。最高との差は「最高まで −」。もう1回には切り替わりの動きを付けない(v0.2.x より遅くしない)
+	const tR = Date.now();
 	await page.key('r');
 	expect(!!(await page.waitState((s) => s.screen === 'play', 3000)), 'もう1回(R)');
+	console.log(`    R を送ってから遊びの画面の状態が届くまで ${Date.now() - tR} ms`);
 	const r2 = await loseByMisses();
 	expect(r2?.share?.includes('(今日の盤)'), `2 回目は「今日の盤」: ${JSON.stringify(r2?.share)}`);
 	await sleep(900);
 	await shot('s3_result_integrity');
 	await page.clickButton('title');
 	expect(!!(await page.waitState((s) => s.screen === 'title', 3000)), 'タイトルへ(マウス)');
-	await sleep(300);
+	await sleep(1100);
 	await shot('s1_title_record');
 
 	// 練習を 2 回: 2 回目は 4 匹潰してから外す → 新しい記録
@@ -296,6 +312,11 @@ try {
 		await page.waitState((s) => s.screen === 'play', 3000);
 		await sleep(60000);
 		await shot('load');
+		// 横に長い窓でも危険の縁が窓の端に出る(舞台の幅で切れない)
+		await page.cdp.send('Emulation.setDeviceMetricsOverride', { width: 2560, height: 1080, deviceScaleFactor: 1, mobile: false });
+		await sleep(400);
+		await shot('load_wide');
+		await page.cdp.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false });
 		const lp = await play();
 		expect((await page.state()).screen === 'play' && lp?.infected === 15 && lp?.active_count === 40, `負荷の場面が 60 秒続いた(虫 ${lp?.infected} / ${lp?.active_count})`);
 		const f = (await page.stats()).frame;
@@ -305,7 +326,7 @@ try {
 	expect(errs.length === 0, `コンソールのエラー ${errs.length} 件` + (errs.length ? ': ' + errs.map((e) => e.text).slice(0, 5).join(' / ') : ''));
 	if (process.argv.includes('--docs')) {
 		mkdirSync(path.join(ROOT, 'docs'), { recursive: true });
-		for (const f of ['s1_title_record', 's2_climax', 's3_result']) copyFileSync(path.join(OUT, f + '.png'), path.join(ROOT, 'docs', f + '.png'));
+		for (const f of ['s1_title_record', 's2_climax', 's3_result_newbest']) copyFileSync(path.join(OUT, f + '.png'), path.join(ROOT, 'docs', f + '.png'));
 	}
 } finally {
 	await page.close();

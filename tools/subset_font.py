@@ -1,4 +1,4 @@
-"""同梱する字体 Noto Sans JP(SlingArc と同じ。太さの軸は残す)を、画面に出す文字だけに絞る(RootCall・ParryDuel の tools/subset_font.py の作り)。
+"""同梱する字体 Noto Sans JP(SlingArc と同じ。太さの軸は残す)と Chakra Petch Bold(題字・数字)を、画面に出す文字だけに絞る(RootCall・ParryDuel の tools/subset_font.py の作り)。
 
 core/strings.gd の文字列リテラルの全文字と、ASCII の印字できる文字、画面で使う記号を集めて絞り、assets/fonts/ に書く。
 原本は google/fonts の固定コミットから取り、sha256 を照らす。tools/font_src/ に置き、git には入れない。文言を足したら回し直す。
@@ -18,9 +18,12 @@ from fontTools.ttLib import TTFont
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE = "https://raw.githubusercontent.com/google/fonts/295d98a7a0c17c68f1341eaeea354e7960ea70d3/ofl/"
+# (原本の名前, URL, sha256, 書き出す名前, 日本語の文言も入れるか)。Chakra Petch は題字・数字・盤の刻印用(v0.3.0)で、ASCII だけ
 FONTS = [
     ("NotoSansJP.ttf", BASE + "notosansjp/NotoSansJP%5Bwght%5D.ttf",
-     "c2f3b4d463500a2ddcd3849cded1fceeb9fd6d1c32e6cbecd568453ba50fc68f", "NotoSansJP-Subset.ttf"),
+     "c2f3b4d463500a2ddcd3849cded1fceeb9fd6d1c32e6cbecd568453ba50fc68f", "NotoSansJP-Subset.ttf", True),
+    ("ChakraPetch-Bold.ttf", BASE + "chakrapetch/ChakraPetch-Bold.ttf",
+     "65fbf76d95651697275e19db4d717c0e95a789ddd3476478b05292104db278a0", "ChakraPetch-Subset.ttf", False),
 ]
 ASCII = "".join(chr(c) for c in range(0x20, 0x7F))
 EXTRA = "×−…"  # ui が描く印
@@ -33,8 +36,9 @@ def strings_chars() -> set[str]:
 
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    chars = set(ASCII) | set(EXTRA) | strings_chars()
-    for src_name, url, sha, out_name in FONTS:
+    all_chars = set(ASCII) | set(EXTRA) | strings_chars()
+    for src_name, url, sha, out_name, japanese in FONTS:
+        chars = all_chars if japanese else set(ASCII)
         src = ROOT / "tools" / "font_src" / src_name
         out = ROOT / "assets" / "fonts" / out_name
         if not src.exists():

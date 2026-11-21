@@ -1,6 +1,6 @@
 # S2 プレイ(画面設計書 §3)。sim をたまった時間ぶん進め(1 フレーム 8 tick まで)、events で演出と音を出し、snapshot を盤に渡す。
 # ゲームの決まりは持たない(INV-1)。押したキーは ui/keymap で盤の番号にして sim.queue_press に渡すだけ。
-# 上の帯(守った時間・点・つなぎ)と 2 段目(耐久・感染の棒)は _draw で描く。
+# 上の帯(守った時間・点・つなぎ)と 2 段目(耐久・感染の計器)は _draw で描く(v0.3.0: 角を切った板の上。点が一番大きく、増えると数え上がってはねる)。
 extends Control
 
 signal finished(result: Dictionary)
@@ -34,7 +34,8 @@ var _over_at := -1
 var _shake_until := 0
 var _shake_px := 0.0
 var _ime_until := 0
-var _bar: Dictionary = {}
+var _shown_score := 0.0  # 上の帯に出している点(本当の点へ数え上がる)
+var _bump_at := -100000
 var _hint: Label
 var _tip: Label  # 盤の下の 1 行(数字の段が加わった・新しい物が初めて出た時の案内)
 var _tip_until := 0
@@ -45,18 +46,10 @@ var _snap: Dictionary = {}
 
 func _ready() -> void:
 	size = Vector2(1280, 720)
-	var esc := Kit.place(Kit.button("Esc", S.ESC, 20), 24, 24, 72, 48)
+	var esc := Kit.place(Kit.button("Esc", S.ESC, 20), 28, 24, 76, 54)
+	esc.add_theme_font_override("font", Kit.num_font())
 	esc.pressed.connect(func() -> void: pause_requested.emit())
 	add_child(esc)
-	for k: String in ["time", "points", "chain"]:
-		var l := Kit.label("", 30, Kit.C_TEXT, 700)
-		add_child(l)
-		_bar[k] = l
-	_bar["time"].horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_bar["chain"].horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	Kit.place(_bar["time"], 120, 20, 300, 56)
-	Kit.place(_bar["points"], 440, 20, 400, 56)
-	Kit.place(_bar["chain"], 860, 20, 396, 56)
 	board = Board.new()
 	Kit.place(board, 0, 0, 1280, 720)
 	add_child(board)
@@ -78,8 +71,13 @@ func start(p_mode: int, p_seed: int) -> void:
 	paused = false
 	_acc = 0.0
 	_over_at = -1
+	_shown_score = 0.0
 	board.reduce_flash = reduce_flash
 	_refresh()
+
+
+func set_view(v: Rect2) -> void:
+	fx.view = v
 
 
 func is_playing() -> bool:
@@ -121,6 +119,11 @@ func _process(delta: float) -> void:
 			fx.float_text(board.center(i), S.FLOAT % ["1,200", "x4.0"], k == 0)
 	fx.tick()
 	board.queue_redraw()
+	if not _snap.is_empty() and absf(_shown_score - float(_snap["score"])) > 0.0:
+		_shown_score = count_up(_shown_score, int(_snap["score"]), delta, reduce_flash)
+		queue_redraw()
+	elif now - _bump_at < B.BUMP_MS + 20:
+		queue_redraw()
 	if _over_at >= 0:
 		if now - _over_at >= B.OVER_MS:
 			_over_at = -2
@@ -225,44 +228,104 @@ func _shake(px: float, ms: int) -> void:
 
 
 func _refresh() -> void:
+	var before := int(_snap["score"]) if not _snap.is_empty() else 0
 	_snap = sim.snapshot()
 	board.snap = _snap
-	var running: bool = _snap["clock_running"]
-	_bar["time"].text = S.BAR_TIME % Score.clock_text(int(_snap["clock"]))
-	_bar["time"].modulate.a = 1.0 if running else 0.45
-	_bar["points"].text = S.BAR_POINTS % Score.comma(int(_snap["score"]))
-	var chain: int = _snap["chain"]
-	_bar["chain"].text = S.BAR_CHAIN % [chain, Score.mult_text(int(_snap["mult10"]))] if chain > 0 else ""
-	_hint.visible = not running
+	if int(_snap["score"]) > before and not reduce_flash:
+		_bump_at = Time.get_ticks_msec()
+	_hint.visible = not bool(_snap["clock_running"])
 	queue_redraw()
 
 
-# 2 段目: 耐久の 10 区切りの棒と数、感染の棒と「9 / 30」、40% の縦線。
+# 上の帯の点を本当の点へ寄せる(1 秒に COUNT_UP_RATE の割合。最後は 1 点ずつ)。点滅を弱める 入ならすぐ本当の点。
+static func count_up(shown: float, target: int, delta: float, reduce: bool) -> float:
+	if reduce or shown > target:
+		return float(target)
+	var next := shown + maxf((target - shown) * minf(delta * B.COUNT_UP_RATE, 1.0), 1.0)
+	return minf(next, float(target))
+
+
+# 点が増えた時のはねの大きさ(1 → 1 + BUMP_SCALE → 1)。
+static func bump_scale(since_ms: int) -> float:
+	if since_ms < 0 or since_ms >= B.BUMP_MS:
+		return 1.0
+	var k := 1.0 - float(since_ms) / B.BUMP_MS
+	return 1.0 + B.BUMP_SCALE * k * k
+
+
+# 上の帯: 守った時間(左)・点(真ん中で一番大きい)・つなぎと倍率(右)。2 段目: 耐久の 10 区切り・感染の計器と終わりの線。
+# 盤の下の 1 行(手がかり・案内・日本語入力)には帯を敷いて、どの背景の上でも読めるようにする。
 @warning_ignore("integer_division")
 func _draw() -> void:
 	if _snap.is_empty():
 		return
-	var f := Kit.font(700)
+	var num := Kit.num_font()
+	var jp := Kit.font(700)
+	var now := Time.get_ticks_msec()
+	Kit.draw_plate(self, Rect2(16, 12, 1248, 78), Color(Kit.C_SHEET, 0.95), Kit.C_RULE, 14)
+	# 守った時間
+	var running: bool = _snap["clock_running"]
+	draw_string(jp, Vector2(126, 40), S.BAR_TIME, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Kit.C_DIM)
+	Kit.draw_digits(self, num, 126, 79, Score.clock_text(int(_snap["clock"])), 34, Color(Kit.C_TEXT, 1.0 if running else 0.45))
+	# 点
+	var pts := Score.comma(int(_shown_score))
+	var s := bump_scale(now - _bump_at)
+	var w := Kit.digits_width(num, pts, 56)
+	var unit := jp.get_string_size(S.BAR_POINTS, HORIZONTAL_ALIGNMENT_LEFT, -1, 26).x
+	var x0 := -(w + 8.0 + unit) / 2.0
+	draw_set_transform(Vector2(640, 60), 0.0, Vector2(s, s))
+	Kit.draw_digits(self, num, x0, 20, pts, 56, Kit.C_WHITE)
+	draw_string(jp, Vector2(x0 + w + 8.0, 20), S.BAR_POINTS, HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Kit.C_DIM)
+	draw_set_transform(Vector2.ZERO)
+	# つなぎと倍率(つなぎ 0 の時は出さない)
+	var chain: int = _snap["chain"]
+	if chain > 0:
+		var mult := Score.mult_text(int(_snap["mult10"]))
+		var bw := num.get_string_size(mult, HORIZONTAL_ALIGNMENT_LEFT, -1, 26).x + 22.0
+		var badge := Rect2(1240 - bw, 34, bw, 40)
+		Kit.draw_plate(self, badge, Kit.C_KEY_TEXT, Color(0, 0, 0, 0), 8)
+		draw_string(num, Vector2(badge.position.x, 64), mult, HORIZONTAL_ALIGNMENT_CENTER, bw, 26, Kit.C_BG)
+		var cx := badge.position.x - 14.0
+		Kit.draw_digits(self, num, cx, 79, str(chain), 34, Kit.C_TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
+		draw_string(jp, Vector2(cx - 120, 40), S.BAR_CHAIN, HORIZONTAL_ALIGNMENT_RIGHT, 120, 18, Kit.C_DIM)
+	# 2 段目の板
+	Kit.draw_plate(self, Rect2(16, 98, 560, 56), Color(Kit.C_SHEET, 0.95), Kit.C_RULE, 10)
+	Kit.draw_plate(self, Rect2(592, 98, 672, 56), Color(Kit.C_SHEET, 0.95), Kit.C_RULE, 10)
+	# 耐久: 10 区切り。30 以下で赤(数も赤)。区切りの数で残りが分かる
 	var integ: int = _snap["integrity"]
-	draw_string(f, Vector2(120, 140), S.BAR_INTEGRITY, HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Kit.C_DIM)
+	draw_string(jp, Vector2(38, 135), S.BAR_INTEGRITY, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Kit.C_DIM)
 	var ic := Kit.C_BUG if integ <= B.INTEGRITY_LOW else Kit.C_GOOD
 	for k in 10:
-		var r := Rect2(184 + k * 26, 116, 22, 30)
-		draw_rect(r, ic if integ >= (k + 1) * 10 else Color(Kit.C_KEY, 1.0))
-		if integ > k * 10 and integ < (k + 1) * 10:
-			draw_rect(Rect2(r.position, Vector2(r.size.x * (integ - k * 10) / 10.0, r.size.y)), ic)
-	draw_string(f, Vector2(456, 140), str(integ), HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Kit.C_TEXT)
+		var r := Rect2(96 + k * 36, 112, 31, 28)
+		Kit.draw_plate(self, r, Kit.C_KEY, Color(0, 0, 0, 0), 6)
+		if integ >= (k + 1) * 10:
+			Kit.draw_plate(self, r, ic, Color(0, 0, 0, 0), 6)
+		elif integ > k * 10:
+			draw_rect(Rect2(r.position + Vector2(0, 6), Vector2(r.size.x * (integ - k * 10) / 10.0, r.size.y - 6)), ic)
+	Kit.draw_digits(self, num, 554, 139, str(integ), 30, ic if integ <= B.INTEGRITY_LOW else Kit.C_TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
+	# 感染: 計器の棒・終わりの線(上に小さな三角)・数
 	var inf: int = _snap["infected"]
 	var act: int = _snap["active_count"]
-	draw_string(f, Vector2(620, 140), S.BAR_INFECT, HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Kit.C_DIM)
-	var bar := Rect2(684, 116, 260, 30)
-	draw_rect(bar, Kit.C_KEY)
+	draw_string(jp, Vector2(612, 135), S.BAR_INFECT, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Kit.C_DIM)
+	var bar := Rect2(674, 112, 300, 28)
+	Kit.draw_plate(self, bar, Kit.C_KEY, Color(0, 0, 0, 0), 6)
 	var over_warn := inf * 100 > act * B.INFECT_WARN_PCT
-	draw_rect(Rect2(bar.position, Vector2(bar.size.x * mini(inf * 100 / maxi(act, 1), 100) / 100.0, bar.size.y)),
-		Kit.C_WARN if over_warn else Kit.C_BUG)
+	var fill := bar.size.x * mini(inf * 100 / maxi(act, 1), 100) / 100.0
+	if fill > 0.0:
+		draw_rect(Rect2(bar.position + Vector2(0, 6), Vector2(fill, bar.size.y - 6)), Kit.C_WARN if over_warn else Kit.C_BUG)
+	for k in range(1, 10):  # 1 割ごとの目盛り
+		var gx := bar.position.x + bar.size.x * k / 10.0
+		draw_line(Vector2(gx, bar.end.y - 6), Vector2(gx, bar.end.y), Color(Kit.C_DIM, 0.6), 1.0)
 	var lx := bar.position.x + bar.size.x * B.LOSE_PERCENT / 100.0
-	draw_line(Vector2(lx, bar.position.y - 6), Vector2(lx, bar.end.y + 6), Kit.C_TEXT, 2.0)
-	draw_string(f, Vector2(960, 140), S.BAR_INFECT_COUNT % [inf, act, lose_at(act)], HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Kit.C_TEXT)
+	draw_line(Vector2(lx, bar.position.y - 2), Vector2(lx, bar.end.y + 4), Kit.C_TEXT, 3.0)
+	draw_colored_polygon(PackedVector2Array([Vector2(lx - 7, bar.position.y - 10), Vector2(lx + 7, bar.position.y - 10), Vector2(lx, bar.position.y - 2)]), Kit.C_TEXT)
+	draw_string(num, Vector2(992, 136), S.BAR_INFECT_COUNT % [inf, act, lose_at(act)], HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Kit.C_TEXT)
+	# 盤の下の 1 行の帯
+	for l: Label in [_hint, _tip, _ime]:
+		if l.visible and l.text != "":
+			var tw := jp.get_string_size(l.text, HORIZONTAL_ALIGNMENT_LEFT, -1, l.get_theme_font_size("font_size")).x + 56.0
+			var edge := Kit.C_WARN if l != _hint else Kit.C_BUG
+			Kit.draw_plate(self, Rect2(640 - tw / 2.0, l.position.y + 2, tw, l.size.y - 4), Color(Kit.C_BG, 0.92), edge, 10)
 
 
 # 何匹で終わるか(表示用。core の「感染数 × 100 ≥ active × LOSE_PERCENT」と同じ線。30 キーで 12、40 キーで 16)。

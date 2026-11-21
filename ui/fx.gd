@@ -14,6 +14,7 @@ var saves: Array = []  # [at, 中心]
 var edge_alpha := 0.0  # 画面の縁の赤(感染が終わりに近い)
 var veil_alpha := 0.0  # 画面全体の赤い幕(終わった瞬間)
 var now_ms := 0
+var view := Rect2(0, 0, 1280, 720)  # 窓に見えている範囲(縁と幕はここ全体に描く。main が入れる)
 var draws := 0  # 描いた回数(smoke が読む)
 
 
@@ -70,7 +71,7 @@ func _draw() -> void:
 	draws += 1
 	var t := _now()
 	if edge_alpha > 0.0:
-		draw_rect(Rect2(Vector2.ZERO, Vector2(1280, 720)).grow(-B.DANGER_EDGE_PX / 2.0), Color(Kit.C_BUG, edge_alpha), false, B.DANGER_EDGE_PX)
+		draw_rect(view.grow(-B.DANGER_EDGE_PX / 2.0), Color(Kit.C_BUG, edge_alpha), false, B.DANGER_EDGE_PX)
 	for p: Array in pops:
 		var k := float(t - int(p[0])) / B.POP_MS
 		draw_rect((p[1] as Rect2).grow(B.POP_GROW_PX * k), Color(Kit.C_WHITE, 0.9 * (1.0 - k)), false, 3.0, true)
@@ -89,7 +90,7 @@ func _draw() -> void:
 		var size := int(28 * (B.BIG_SCALE if f[3] else 1.0))
 		var p: Vector2 = f[1] - Vector2(B.FLOAT_W / 2.0, B.FLOAT_RISE_PX * k)
 		var a := 1.0 - k * k
-		draw_string_outline(Kit.font(800), p, f[2], HORIZONTAL_ALIGNMENT_CENTER, B.FLOAT_W, size, B.FLOAT_OUTLINE, Color(Kit.C_BG, a))
-		draw_string(Kit.font(800), p, f[2], HORIZONTAL_ALIGNMENT_CENTER, B.FLOAT_W, size, Color(Kit.C_GOOD if f[3] else Kit.C_TEXT, a))
+		draw_string_outline(Kit.num_font(), p, f[2], HORIZONTAL_ALIGNMENT_CENTER, B.FLOAT_W, size, B.FLOAT_OUTLINE, Color(Kit.C_BG, a))
+		draw_string(Kit.num_font(), p, f[2], HORIZONTAL_ALIGNMENT_CENTER, B.FLOAT_W, size, Color(Kit.C_GOOD if f[3] else Kit.C_TEXT, a))
 	if veil_alpha > 0.0:
-		draw_rect(Rect2(Vector2.ZERO, Vector2(1280, 720)), Color(Kit.C_BUG, veil_alpha))
+		draw_rect(view, Color(Kit.C_BUG, veil_alpha))

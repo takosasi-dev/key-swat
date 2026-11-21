@@ -1,5 +1,5 @@
 # キーボードでボタンを選ぶ(共通 §3 の 18)。↑↓ で選び、Enter か Space で押す。マウスでも押せる。
-# 押した時の動きはボタンの pressed に繋いでおく。
+# 選んだボタンは型の変種 SelButton(theme.tres)になる。選びを動かすと select、押すと confirm の小さな音。
 extends RefCounted
 
 const Kit := preload("res://ui/kit.gd")
@@ -12,7 +12,11 @@ func _init(list: Array[Button], first: int = 0) -> void:
 	buttons = list
 	sel = clampi(first, 0, maxi(buttons.size() - 1, 0))
 	for b in buttons:
-		b.mouse_entered.connect(func() -> void: select(buttons.find(b)))
+		b.mouse_entered.connect(func() -> void:
+			if buttons.find(b) != sel:
+				select(buttons.find(b))
+				Sfx.play("select"))
+		b.pressed.connect(func() -> void: Sfx.play("confirm"))
 	_paint()
 
 

@@ -309,7 +309,7 @@ func test_polish_float_text_fits_and_stays_on_screen() -> bool:
 	const Fx := preload("res://ui/fx.gd")
 	const Kit := preload("res://ui/kit.gd")
 	var widest := S.FLOAT % ["1,200", "x4.0"]
-	var w := Kit.font(800).get_string_size(widest, HORIZONTAL_ALIGNMENT_LEFT, -1, int(28 * B.BIG_SCALE)).x
+	var w := Kit.num_font().get_string_size(widest, HORIZONTAL_ALIGNMENT_LEFT, -1, int(28 * B.BIG_SCALE)).x
 	ok(w + B.FLOAT_OUTLINE * 2 <= B.FLOAT_W, "巣の大きい数字が枠に収まる(%d px)" % int(w))
 	var fx := Fx.new()
 	fx.now_ms = 1000

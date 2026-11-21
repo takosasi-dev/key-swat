@@ -3,7 +3,7 @@
 extends RefCounted
 
 const NAME := "KeySwat"
-const VERSION := "v0.2.0"
+const VERSION := "v0.3.0"
 const URL := "https://takosasi-dev.github.io/key-swat/"
 
 # S0(共通 §6)
@@ -26,9 +26,10 @@ const LOAD_FAILED := "保存を読めなかったので、記録を初めから�
 # S2 プレイ
 const ESC := "Esc"
 const HINT := "赤いキーを押す"
-const BAR_TIME := "守った %s"
-const BAR_POINTS := "%s点"
-const BAR_CHAIN := "つなぎ %d  %s"
+# 上の帯は名前と数を分けて描く(v0.3.0。数は Chakra Petch で同じ幅の升に置く)
+const BAR_TIME := "守った"
+const BAR_POINTS := "点"
+const BAR_CHAIN := "つなぎ"
 const BAR_INTEGRITY := "耐久"
 const BAR_INFECT := "感染"
 const BAR_INFECT_COUNT := "%d / %d(%d で終わり)"
@@ -38,17 +39,18 @@ const TIP_WARN := "橙の先へ広がる。赤い元を押せば止まる"
 const TIP_NEST := "巣は 3 回押すと潰れる"
 const TIP_JUMPER := "跳ぶ虫は 1 つ飛ばした先へ広がる"
 const FLOAT := "+%s %s"
-const MISS_MARK := "×"
 
 # S3 結果
 const REASONS := ["感染が広がりきった", "耐久が尽きた"]
 const RES_POINTS := "%s点"
 const RES_NEW_BEST := "最高 +%s(新しい記録)"
 const RES_TO_BEST := "最高まで −%s"
-const RES_TIME := "守った %s"
-const RES_SQUASHED := "潰した数 %d"
-const RES_MAX_CHAIN := "最大つなぎ %d"
-const RES_MISSES := "外れ %d"
+# 4 つの数は名前と数を分けて升に置く(v0.3.0)
+const RES_TIME := "守った"
+const RES_SQUASHED := "潰した数"
+const RES_MAX_CHAIN := "最大つなぎ"
+const RES_MISSES := "外れ"
+const STAMP_NEW := "新しい記録"
 const B_RETRY := "もう1回"
 const B_COPY := "コピー"
 const B_TITLE := "タイトルへ"
@@ -72,6 +74,11 @@ const B_BACK := "戻る"
 const PAUSE := "一時停止"
 const B_RESUME := "続ける"
 const B_RESTART := "やり直す"
+
+# 画面の下のキーの案内(v0.3.0。キーの形は絵で描き、その横に動きを書く)
+const HINT_PICK := "選ぶ"
+const HINT_OK := "決める"
+const HINT_CHANGE := "変える"
 
 # キーの確かめ(共通 §3 の 22)
 const KEYS_TITLE := "キーの確かめ(押したキーを下に出す。Esc 2 回でタイトルへ)"

@@ -1,7 +1,8 @@
 # 画面の切り替え(S0〜S5)・入力の振り分け・保存・自動の一時停止を受け持つ。ゲームの決まりは持たない(INV-1)。
 # ?keys=1(または --keys)でキーの確かめの画面(共通 §3 の 22)。--auto=mash|idle|good は窓なしの smoke 用で、
 # S0 → 今日の盤 → 結果まで bot に遊ばせ、画面が変わるたびに「SMOKE screen=...」を印字する。?debug=1 で window.ksState に状態を出す
-# (tests/web が読む)。1280×720 の舞台は窓の真ん中に置き、余りは背景色で埋める(共通 §3 の 1)。作りは RootCall の ui/main.gd。
+# (tests/web が読む)。1280×720 の舞台は窓の真ん中に置き、余りは背景(方眼)で埋める(共通 §3 の 1)。作りは RootCall の ui/main.gd。
+# 画面の切り替わり(v0.3.0)は見た目だけ: screen と current はその場で替え、新しい画面を薄く→濃く出し、検査光の線を走らせる。
 extends Node
 
 const B := preload("res://core/balance.gd")
@@ -17,6 +18,10 @@ const Title := preload("res://ui/title.gd")
 const Result := preload("res://ui/result.gd")
 const Settings := preload("res://ui/settings.gd")
 const Pause := preload("res://ui/pause.gd")
+const Backdrop := preload("res://ui/backdrop.gd")
+const Wipe := preload("res://ui/wipe.gd")
+const Logo := preload("res://ui/logo.gd")
+const KeyHint := preload("res://ui/keyhint.gd")
 
 var stage: Control
 var store: Store
@@ -30,6 +35,10 @@ var keys_mode := false
 var auto := ""  # smoke の bot(mash / idle / good)。空なら人が遊ぶ
 var key_log: Array = []  # 届いたキーの中身(直近 40 個。キーの確かめが読む)
 var _touch_note: Label = null
+var backdrop: Backdrop
+var wipe: Wipe
+var view := Rect2(0, 0, 1280, 720)  # 舞台の座標で、窓に見えている範囲
+var entering: Array = []  # [画面, 始めた時刻(ms), 長さ(ms), 上がる幅(px)]。main._process が濃さと位置を進める
 var _keys_label: Label = null
 var _visibility_cb: Variant = null
 var _settings_overlay: Control = null
@@ -45,12 +54,13 @@ func _ready() -> void:
 	stage = Control.new()
 	stage.size = Vector2(1280, 720)
 	add_child(stage)
-	var bg := ColorRect.new()
-	bg.color = Kit.C_BG
-	stage.add_child(Kit.place(bg, -2000, -2000, 5280, 4720))
+	backdrop = Backdrop.new()
+	stage.add_child(Kit.place(backdrop, 0, 0, 1280, 720))
+	wipe = Wipe.new()
+	stage.add_child(Kit.place(wipe, 0, 0, 1280, 720))
+	store = Store.new()
 	get_viewport().size_changed.connect(_layout)
 	_layout()
-	store = Store.new()
 	_apply_settings()
 	keys_mode = _flag("keys")
 	debug = _flag("debug")
@@ -64,7 +74,60 @@ func _ready() -> void:
 
 # 縦横比が 16:9 でない窓では、表示の範囲が広がる(project.godot の aspect=expand)。舞台をその真ん中に置く。
 func _layout() -> void:
-	stage.position = ((get_viewport().get_visible_rect().size - stage.size) / 2.0).floor()
+	var vs := get_viewport().get_visible_rect().size
+	stage.position = ((vs - stage.size) / 2.0).floor()
+	view = Rect2(-stage.position, vs)
+	backdrop.view = view
+	wipe.view = view
+	backdrop.queue_redraw()
+	for c in stage.get_children():
+		if c.has_method("set_view"):
+			c.set_view(view)
+
+
+# 点滅を弱める 入は、画面の切り替わり・題字・はね などの動きも止める(動きを減らす設定を兼ねる)。
+func reduce_motion() -> bool:
+	return bool(store.settings()["reduce_flash"])
+
+
+# 新しい画面を舞台に置き、current にする。motion: "wipe"(線を走らせ、薄く→濃く)/ "fade"(薄く→濃くだけ)/ "none"。
+func _show(node: Control, motion: String) -> void:
+	stage.add_child(node)
+	stage.move_child(wipe, -1)
+	if node.has_method("set_view"):
+		node.set_view(view)
+	current = node
+	if motion != "none" and not reduce_motion():
+		_animate_in(node, B.ENTER_MS, B.ENTER_RISE_PX if motion == "wipe" else 0.0)
+		if motion == "wipe":
+			wipe.run()
+
+
+func _animate_in(node: Control, ms: int, rise: float) -> void:
+	node.modulate.a = 0.0
+	entering.append([node, Time.get_ticks_msec(), ms, rise])
+
+
+# 入りの動きの濃さ(0→1)。時刻だけで決まる。
+static func enter_alpha(since_ms: int, ms: int) -> float:
+	return Kit.ease_out(float(since_ms) / ms)
+
+
+func _step_entering() -> void:
+	var now := Time.get_ticks_msec()
+	var keep: Array = []
+	for e: Array in entering:
+		var node: Variant = e[0]
+		if not is_instance_valid(node) or not (node as Control).is_inside_tree():
+			continue
+		var c := node as Control
+		var k := enter_alpha(now - int(e[1]), int(e[2]))
+		c.modulate.a = k
+		if c != play:  # play は揺れで自分の位置を毎フレーム決める
+			c.position.y = float(e[3]) * (1.0 - k)
+		if k < 1.0:
+			keep.append(e)
+	entering = keep
 
 
 static func _flag(flag: String) -> bool:
@@ -83,9 +146,10 @@ func _clear() -> void:
 		pause_view.queue_free()
 		pause_view = null
 	for c in stage.get_children():
-		if c is ColorRect and c.get_index() == 0:
+		if c == backdrop or c == wipe:
 			continue
 		c.queue_free()
+	entering.clear()
 	current = null
 	play = null
 	_settings_overlay = null
@@ -93,6 +157,8 @@ func _clear() -> void:
 
 func _set_screen(s: String) -> void:
 	screen = s
+	backdrop.animate = s in ["gate", "title"] and not reduce_motion()
+	backdrop.queue_redraw()
 	if auto != "":
 		var extra := ""
 		if s == "result" and current != null:
@@ -106,14 +172,19 @@ func _show_gate() -> void:
 	_clear()
 	var g := Control.new()
 	g.size = Vector2(1280, 720)
-	g.add_child(Kit.place(Kit.label(S.NAME, 72, Kit.C_TEXT, 800), 0, 220, 1280, 100))
-	g.add_child(Kit.place(Kit.label(S.S0_START, 28, Kit.C_TEXT, 500), 0, 360, 1280, 44))
-	g.add_child(Kit.place(Kit.label(S.S0_KEYBOARD, 18, Kit.C_DIM), 0, 410, 1280, 30))
+	var logo := Logo.new()
+	logo.reduce = reduce_motion()
+	logo.position = Vector2((1280 - logo.size.x) / 2.0, 200)
+	g.add_child(logo)
+	logo.play_intro()
+	var start := Kit.label(S.S0_START, 28, Kit.C_TEXT, 700)
+	start.name = "start"
+	g.add_child(Kit.place(start, 0, 380, 1280, 44))
+	g.add_child(Kit.place(Kit.label(S.S0_KEYBOARD, 20, Kit.C_DIM, 500), 0, 432, 1280, 30))
 	_touch_note = Kit.label(S.TOUCH, 22, Kit.C_WARN, 700)
 	_touch_note.visible = false
-	g.add_child(Kit.place(_touch_note, 0, 470, 1280, 40))
-	stage.add_child(g)
-	current = g
+	g.add_child(Kit.place(_touch_note, 0, 490, 1280, 40))
+	_show(g, "none")
 	_set_screen("gate")
 
 
@@ -152,8 +223,14 @@ func _input(event: InputEvent) -> void:
 		current.key(event)
 
 
-# smoke: S0 → 今日の盤 → 結果まで自動で進める。
+# 画面の入りの動きを進める。smoke の時は S0 → 今日の盤 → 結果まで自動で進める。
 func _process(_delta: float) -> void:
+	if not entering.is_empty():
+		_step_entering()
+	if screen == "gate" and current != null and not reduce_motion():  # 「始める」の字をゆっくり濃淡(1.8 秒で 1 回。点滅ではない)
+		var l := current.get_node_or_null("start") as Label
+		if l != null:
+			l.modulate.a = 0.6 + 0.4 * absf(fmod(Time.get_ticks_msec() / 900.0, 2.0) - 1.0)
 	if auto == "":
 		return
 	if screen == "gate":
@@ -176,8 +253,7 @@ func _show_title(sel: int = 0) -> void:
 	var t := Title.new()
 	t.build(store, d["day"], d["date"], sel)
 	t.chosen.connect(_on_title)
-	stage.add_child(t)
-	current = t
+	_show(t, "wipe")
 	_set_screen("title")
 
 
@@ -187,10 +263,10 @@ func _on_title(what: String) -> void:
 		"settings":
 			_show_settings("title")
 		"daily":
-			_start({"mode": Sim.MODE_DAILY, "seed": Day.day_seed(d["day"]), "day": d["day"], "date": d["date"]})
+			_start({"mode": Sim.MODE_DAILY, "seed": Day.day_seed(d["day"]), "day": d["day"], "date": d["date"]}, "wipe")
 		"practice":
 			var s := Time.get_ticks_usec() & 0xFFFFFFFF
-			_start({"mode": Sim.MODE_PRACTICE, "seed": s if s != 0 else 1, "day": d["day"], "date": d["date"]})
+			_start({"mode": Sim.MODE_PRACTICE, "seed": s if s != 0 else 1, "day": d["day"], "date": d["date"]}, "wipe")
 
 
 # 端末の今日の日付。始めた時の日付で盤を決める(E-14)。
@@ -204,20 +280,20 @@ func _today() -> Dictionary:
 
 # --- S2 プレイ ---
 
-func _start(r: Dictionary) -> void:
+# motion: タイトルからは "wipe"。もう1回・やり直すは "none"(押してすぐ遊べるように動きを付けない)。
+func _start(r: Dictionary, motion: String = "none") -> void:
 	_clear()
 	run = r
 	play = Play.new()
 	var st: Dictionary = store.settings()
 	play.shake_on = st["shake"]
 	play.reduce_flash = st["reduce_flash"]
-	stage.add_child(play)
+	_show(play, motion)
 	play.start(int(r["mode"]), int(r["seed"]))
 	if auto != "":
 		play.bot = Bots.Driver.new(["good", "mash", "idle"].find(auto), int(r["seed"]))
 	play.finished.connect(_on_finished)
 	play.pause_requested.connect(_pause)
-	current = play
 	_set_screen("play")
 
 
@@ -228,7 +304,17 @@ func _pause() -> void:
 	pause_view = Pause.new()
 	pause_view.build()
 	pause_view.picked.connect(_on_pause)
-	stage.add_child(pause_view)
+	_overlay(pause_view)
+
+
+# 一時停止・一時停止から開いた設定の板を、遊びの画面の上に重ねる(少し上がりながら出る)。
+func _overlay(node: Control) -> void:
+	stage.add_child(node)
+	stage.move_child(wipe, -1)
+	if node.has_method("set_view"):
+		node.set_view(view)
+	if not reduce_motion():
+		_animate_in(node, B.POP_IN_MS, 8.0)
 
 
 func _on_pause(what: String) -> void:
@@ -270,11 +356,10 @@ func _on_finished(result: Dictionary) -> void:
 	var text := Share.make(r["date"], int(r["mode"]), rec["first_today"], result)
 	_clear()
 	var v := Result.new()
-	v.build(result, rec, text)
+	v.build(result, rec, text, reduce_motion())
 	v.retry.connect(func() -> void: _start(run))  # FR-18: 同じ入口。今日の盤は同じ種
 	v.to_title.connect(_show_title)
-	stage.add_child(v)
-	current = v
+	_show(v, "wipe")
 	_set_screen("result")
 
 
@@ -288,17 +373,13 @@ func _show_settings(from: String) -> void:
 	if from == "pause":
 		pause_view.visible = false
 		pause_view.process_mode = Node.PROCESS_MODE_DISABLED
-		var dim := ColorRect.new()
-		dim.color = Color(Kit.C_BG, 0.96)
-		s.add_child(Kit.place(dim, 0, 0, 1280, 720))
-		s.move_child(dim, 0)
-		stage.add_child(s)
+		s.opaque = true  # 後ろの盤を隠す
+		_overlay(s)
 		_settings_overlay = s
 		current = s
 	else:
 		_clear()
-		stage.add_child(s)
-		current = s
+		_show(s, "wipe")
 	_set_screen("settings")
 
 
@@ -325,13 +406,14 @@ func _show_keys() -> void:
 	_clear()
 	var g := Control.new()
 	g.size = Vector2(1280, 720)
-	g.add_child(Kit.place(Kit.label(S.KEYS_TITLE, 22, Kit.C_TEXT, 700), 0, 20, 1280, 40))
+	var sheet := Panel.new()
+	g.add_child(Kit.place(sheet, 40, 16, 1200, 688))
+	g.add_child(Kit.place(Kit.label(S.KEYS_TITLE, 22, Kit.C_TEXT, 700), 0, 28, 1280, 40))
 	_keys_label = Kit.label("", 18, Kit.C_KEY_TEXT, 400)
 	_keys_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_keys_label.vertical_alignment = VERTICAL_ALIGNMENT_TOP
-	g.add_child(Kit.place(_keys_label, 60, 80, 1160, 620))
-	stage.add_child(g)
-	current = g
+	g.add_child(Kit.place(_keys_label, 64, 80, 1152, 610))
+	_show(g, "wipe")
 	_set_screen("keys")
 
 

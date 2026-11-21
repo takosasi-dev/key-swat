@@ -1,6 +1,7 @@
 # 盤の描画(仕様書 §9.1・画面設計書 §3・§8)。sim.snapshot() の中身を、キーごとの形で描くだけ(INV-1)。
 # 虫の種類は形で分ける(ふつう = 丸、巣 = 白い点と太い縁、跳ぶ虫 = ひし形、予兆の先 = 橙の縁と切り欠き。NFR-11)。
 # 外れの光・巣の震え・湧いた時の膨らみ・数字の段の入り方は、play が時刻(ms)を書き込み、ここで時刻から描く。
+# v0.3.0: キーは題字と同じ角を切った形、刻印は Chakra Petch。外れの×は線 2 本で描く(記号の字を使わない)。
 extends Control
 
 const B := preload("res://core/balance.gd")
@@ -28,11 +29,11 @@ func _init() -> void:
 		miss_at.append(-100000)
 		hit_at.append(-100000)
 		spawn_at.append(-100000)
-	_sb["clean"] = Kit.box(Kit.C_KEY, Kit.C_KEY, 0, 8)
-	_sb["bug"] = Kit.box(Kit.C_BUG, Kit.C_BUG, 0, 8)
-	_sb["nest"] = Kit.box(Kit.C_NEST, Kit.C_WHITE, 4, 8)
-	_sb["jumper"] = Kit.box(Kit.C_JUMPER, Kit.C_JUMPER, 0, 8)
-	_sb["locked"] = Kit.box(Color(0, 0, 0, 0), Kit.C_EDGE, 2, 8)
+	_sb["clean"] = Kit.cut_box(Kit.C_KEY, Kit.C_RULE, 1, 12)
+	_sb["bug"] = Kit.cut_box(Kit.C_BUG, Kit.C_BUG, 0, 12)
+	_sb["nest"] = Kit.cut_box(Kit.C_NEST, Kit.C_WHITE, 4, 12)
+	_sb["jumper"] = Kit.cut_box(Kit.C_JUMPER, Kit.C_JUMPER, 0, 12)
+	_sb["locked"] = Kit.cut_box(Color(0, 0, 0, 0), Kit.C_RULE, 2, 12)
 
 
 # タイトルに薄く出す盤(段 1〜3、F だけ赤い)。
@@ -111,14 +112,16 @@ func _draw() -> void:
 		if m >= 0 and m < B.MISS_MS:
 			var a := (B.REDUCED_FLASH_ALPHA if reduce_flash else 0.85) * (1.0 - float(m) / B.MISS_MS)
 			draw_rect(r, Color(Kit.C_WHITE, a))
-			draw_string(Kit.font(800), Vector2(r.position.x, r.get_center().y + 22), S.MISS_MARK, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 64,
-				Kit.C_TEXT if reduce_flash else Color(Kit.C_BG, 0.9))  # 点滅を弱めると光が薄いので、×は明るい字で
+			var xc := Kit.C_TEXT if reduce_flash else Color(Kit.C_BG, 0.9)  # 点滅を弱めると光が薄いので、×は明るい線で
+			var c := r.get_center()
+			draw_line(c + Vector2(-20, -20), c + Vector2(20, 20), xc, 8.0, true)
+			draw_line(c + Vector2(20, -20), c + Vector2(-20, 20), xc, 8.0, true)
 	for t: int in warned.keys():
 		_arrow(warned[t], t)
 
 
 func _label(i: int, r: Rect2, color: Color, size: int) -> void:
-	draw_string(Kit.font(700), Vector2(r.position.x, r.get_center().y + size * 0.36), Layout.LABELS[i], HORIZONTAL_ALIGNMENT_CENTER, r.size.x, size, color)
+	draw_string(Kit.num_font(), Vector2(r.position.x, r.get_center().y + size * 0.36), Layout.LABELS[i], HORIZONTAL_ALIGNMENT_CENTER, r.size.x, size, color)
 
 
 # 予兆の先: 橙の縁が脈打ち(60 tick = 500 ms で 1 回)、上の縁の真ん中に三角の切り欠き。
